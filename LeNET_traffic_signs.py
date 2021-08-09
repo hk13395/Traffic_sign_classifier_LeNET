@@ -2,9 +2,9 @@
 import numpy as np
 import pickle
 
-training_file = '../Classifier_project/train.p'
-test_file = '../Classifier_project/test.p'
-validation_file = '../Classifier_project/valid.p'
+training_file = '../Classifier project/Traffic_sign_classifier_LeNET/training_data/train.p'
+test_file = '../Classifier project/Traffic_sign_classifier_LeNET/training_data/test.p'
+validation_file = '../Classifier project/Traffic_sign_classifier_LeNET/training_data/valid.p'
 
 with open(training_file, mode='rb') as f:
     train = pickle.load(f)
