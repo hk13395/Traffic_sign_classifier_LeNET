@@ -1,4 +1,6 @@
 # importing the files required for training
+import tensorflow as tf
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pickle
@@ -55,3 +57,46 @@ plt.hist(y_test, bins=n_classes, alpha=1.0, label='Testing data')
 plt.hist(y_valid, bins=n_classes, alpha=0.6, label='Validation data')
 plt.legend(loc='upper center')
 plt.show()
+
+
+# pre processing of the data
+def preprocess(X, equalize_his=True):
+    X = np.array([np.expand_dims(cv2.cvtColor(
+        rgb_img, cv2.COLOR_RGB2YUV)[:, :, 0], 2) for rgb_img in X])
+
+    if equalize_his:
+        X = np.array([np.expand_dims(cv2.equalizeHist(np.uint8(img)), 2)
+                     for img in X])
+
+    X = np.float32(X)
+
+    X -= np.mean(X, axis=0)
+    X /= (np.std(X, axis=0) + np.finfo(np.float32).eps)
+
+    return X
+
+
+x_train_norm = preprocess(x_train)
+x_test_norm = preprocess(x_test)
+
+# leNET architecture design and test
+
+
+def leNET(x):
+    mu = 0
+    sigma = 0.1
+
+    # Convolutional Layer 1
+    conv1_w = tf.Variable(tf.random.truncated_normal(
+        shape=(3, 3, 1, 64), mean=mu, stdd=sigma))
+    conv1_b = tf.Variable(tf.constant(0.1, shape=(64,)))
+    conv1 = tf.nn.conv2d(x, conv1_w, strides=[
+                         1, 1, 1, 1], padding='SAME') + conv1_b
+    conv1 = tf.nn.relu(conv1)
+    conv1_pool = tf.nn.max_pool(conv1, ksize=[1, 2, 2, 1], strides=[
+                                1, 1, 1, 1], padding='SAME')
+    # drop1 = tf.nn.dropout(conv1_pool, keep_prob=keep_prob)
+
+    # Convolutional Layer 2
+
+    keep_prob = tf.compat.v1.placeholder(tf.float32)
