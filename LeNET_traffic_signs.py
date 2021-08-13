@@ -1,10 +1,15 @@
 # importing the files required for training
+from sklearn.model_selection import train_test_split
+from sklearn.utils import shuffle
 import tensorflow as tf
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 from keras.preprocessing.image import ImageDataGenerator
+from tensorflow.python.ops.gen_nn_ops import bias_add
+from tensorflow.python.ops.gen_random_ops import truncated_normal
+from tensorflow.python.ops.gen_state_ops import variable
 tf.compat.v1.disable_eager_execution()
 
 training_file = '../Traffic_sign_classifier_LeNET/training_data/train.p'
@@ -80,16 +85,17 @@ def preprocess(X, equalize_his=True):
 
 x_train_norm = preprocess(x_train)
 x_test_norm = preprocess(x_test)
-x_valid_norm = preprocess(x_valid)
+
+
+x_train_norm, x_valid_norm, y_train, y_valid = train_test_split(
+    x_train_norm, y_train, test_size=0.2, random_state=42)
 
 image_datagen = ImageDataGenerator(
     rotation_range=15.0, zoom_range=0.2, width_shift_range=0.1, height_shift_range=0.1)
 
 # leNET architecture model design
-
 epochs = 30
 batch_size = 128
-batch_per_epoch = 5000
 
 
 def LeNET(x, n_Classes):
@@ -98,57 +104,77 @@ def LeNET(x, n_Classes):
 
     # Convolutional Layer 1
     conv1_w = tf.Variable(tf.random.truncated_normal(
-        shape=(3, 3, 1, 64), mean=mu, stddev=sigma))
-    conv1_b = tf.Variable(tf.constant(0.1, shape=(64,)))
+        shape=(5, 5, 1, 6), mean=mu, stddev=sigma))
+    conv1_b = tf.Variable(tf.zeros(6))
     conv1 = tf.nn.conv2d(x, conv1_w, strides=[
-                         1, 1, 1, 1], padding='SAME') + conv1_b
+                         1, 1, 1, 1], padding='VALID')
+    conv1 = tf.nn.bias_add(conv1, conv1_b)
     conv1 = tf.nn.relu(conv1)
     conv1_pool = tf.nn.max_pool(conv1, ksize=[1, 2, 2, 1], strides=[
-                                1, 2, 2, 1], padding='SAME')
-
-    drop1 = tf.nn.dropout(conv1_pool, rate=keep_prob)
+                                1, 2, 2, 1], padding='VALID')
 
     # Convolutional Layer 2
     conv2_w = tf.Variable(tf.random.truncated_normal(
-        shape=(3, 3, 64, 128), mean=mu, stddev=sigma))
-    conv2_b = tf.Variable(tf.constant(0.1, shape=(128,)))
-    conv2 = tf.nn.conv2d(drop1, conv2_w, strides=[
-                         1, 1, 1, 1], padding='SAME') + conv2_b
+        shape=(5, 5, 6, 16), mean=mu, stddev=sigma))
+    conv2_b = tf.Variable(tf.zeros(16))
+    conv2 = tf.nn.conv2d(conv1_pool, conv2_w, strides=[
+                         1, 1, 1, 1], padding='VALID')
+    conv2 = tf.nn.bias_add(conv2, conv2_b)
+    conv2 = tf.nn.relu(conv2)
     conv2_pool = tf.nn.max_pool(conv2, ksize=[1, 2, 2, 1], strides=[
-                                1, 2, 2, 1], padding='SAME')
+                                1, 2, 2, 1], padding='VALID')
 
-    drop2 = tf.nn.dropout(conv2_pool, rate=keep_prob)
+    # Convolutionla Layer 3
+    conv3_w = tf.Variable(tf.random.truncated_normal(
+        shape=(5, 5, 16, 400), mean=mu, stddev=sigma))
+    conv3_b = tf.Variable(tf.zeros(400))
+    conv3 = tf.nn.conv2d(conv2_pool, conv3_w, strides=[
+                         1, 1, 1, 1], padding='VALID')
+    conv3 = tf.nn.bias_add(conv3, conv3_b)
+    conv3 = tf.nn.relu(conv3)
 
     # Fully Connected layer 1
     fc_0 = tf.concat([tf.compat.v1.layers.flatten(
-        drop1), tf.compat.v1.layers.flatten(drop2)], 1)
+        conv2_pool), tf.compat.v1.layers.flatten(conv3)], 1)
+
+    fc_0 = tf.nn.dropout(fc_0, rate=keep_prob)
 
     fc1_w = tf.Variable(tf.random.truncated_normal(
-        shape=(fc_0.shape[1], 64), mean=mu, stddev=sigma))
-    fc1_b = tf.Variable(tf.constant(0.1, shape=(64,)))
+        shape=(fc_0.shape[1], n_classes), mean=mu, stddev=sigma))
+    fc1_b = tf.Variable(tf.zeros(n_classes))
     fc1 = tf.matmul(fc_0, fc1_w) + fc1_b
-
-    drop_fc1 = tf.nn.dropout(fc1, rate=keep_prob)
+    logits = fc1
+    """
+    fc1 = tf.nn.relu(fc1)
 
     # Fully Connected layer 2
     fc2_w = tf.Variable(tf.random.truncated_normal(
-        shape=(drop_fc1.shape[1], n_classes), mean=mu, stddev=sigma))
-    fc2_b = tf.Variable(tf.constant(0.1, shape=(n_classes,)))
-    logits = tf.matmul(drop_fc1, fc2_w) + fc2_b
+        shape=(fc1.shape[1], 84), mean=mu, stddev=sigma))
+    fc2_b = tf.Variable(tf.zeros(84))
+    fc2 = tf.matmul(fc1, fc2_w) + fc2_b
+    fc2 = tf.nn.relu(fc2)
 
+
+    # Fully connected layer 3
+    fc3_w = tf.Variable(tf.random.truncated_normal(shape=(fc2.shape[1], 43), mean=mu, stddev=sigma))
+    fc3_b = tf.Variable(tf.zeros(43))
+    logits = tf.matmul(fc2,fc3_w) + fc3_b
+    """
     return logits
 
 
 # Palceholders
+tf.compat.v1.reset_default_graph()
 x = tf.compat.v1.placeholder(dtype=tf.float32, shape=(None, 32, 32, 1))
 y = tf.compat.v1.placeholder(dtype=tf.int32, shape=None)
 keep_prob = tf.compat.v1.placeholder(tf.float32)
+one_hot_y = tf.one_hot(y, 43)
 
 # training pipeline
 learn_rate = 0.001
 logits = LeNET(x, n_classes)
 cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(
-    logits=logits, labels=y)
+    logits, one_hot_y)
 loss_function = tf.reduce_mean(cross_entropy)
 optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learn_rate)
 train_step = optimizer.minimize(loss_function)
@@ -156,7 +182,7 @@ train_step = optimizer.minimize(loss_function)
 
 # Model evaluation
 correct_prediction = tf.equal(
-    tf.argmax(logits, 1), tf.argmax(tf.cast(y, tf.int64)))
+    tf.argmax(logits, 1), tf.argmax(one_hot_y))
 accuracy_operation = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
 
@@ -179,25 +205,25 @@ checkpoint = tf.compat.v1.train.Saver()
 with tf.compat.v1.Session() as sess:
     init = tf.compat.v1.global_variables_initializer()
     sess.run(init)
+    num_examples = len(x_train)
 
-    for epoch in range(epochs):
-        print("Epoch{}....".format(epoch+1))
-        batch_counter = 0
+    for i in range(epochs):
+        x_train, y_train = shuffle(x_train, y_train)
 
-        for batch_x, batch_y in image_datagen.flow(x_train_norm, y_train, batch_size=batch_size):
-            batch_counter += 1
+        for offset in range(0, num_examples, batch_size):
+            end = offset + batch_size
+            batch_x, batch_y = x_train[offset: end], y_train[offset: end]
             sess.run(train_step, feed_dict={
                      x: batch_x, y: batch_y, keep_prob: 0.5})
 
-            if batch_counter == batch_per_epoch:
-                break
-
         train_accuracy = evaluate(x_train_norm, y_train)
         val_accuracy = evaluate(x_valid_norm, y_valid)
+        print("EPOCH {}...".format(i+1))
         print('Train accuracy = {:.3f} Validation accuracy = {:.3f}'.format(
             train_accuracy, val_accuracy))
 
-        checkpoint.save(
-            sess, save_path='../checkpoint/traffic_sign_model.ckpt', global_step=epoch)
+        checkpoint.save(sess, 'LeNET')
+        print("Model saved")
+
 
 # Testing the model
